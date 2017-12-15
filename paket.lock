@@ -2,11 +2,19 @@ REDIRECTS: FORCE
 RESTRICTION: >= net451
 NUGET
   remote: https://api.nuget.org/v3/index.json
+    Argu (4.0) - restriction: || (&& (>= net451) (>= netstandard1.6)) (>= net461)
+      FSharp.Core (>= 3.1) - restriction: && (>= net451) (< netstandard2.0)
+      FSharp.Core (>= 4.2.1) - restriction: && (>= net451) (>= netstandard2.0)
     AsyncIO (0.1.26)
     Chessie (0.6)
       FSharp.Core  - restriction: && (>= net451) (< netstandard1.6)
       FSharp.Core (>= 4.0.1.7-alpha) - restriction: && (>= net451) (>= netstandard1.6)
       NETStandard.Library (>= 1.6) - restriction: && (>= net451) (>= netstandard1.6)
+    Expecto (5.1.1)
+      Argu (>= 3.7) - restriction: || (&& (>= net451) (>= netstandard1.6)) (>= net461)
+      FSharp.Core (>= 4.1.18) - restriction: || (&& (>= net451) (>= netstandard1.6)) (>= net461)
+      Mono.Cecil (>= 0.10.0-beta5) - restriction: || (&& (>= net451) (>= netstandard1.6)) (>= net461)
+      System.ValueTuple (>= 4.4) - restriction: || (&& (>= net451) (>= netstandard1.6) (< netstandard2.0)) (>= net461)
     FAKE (4.64.2)
     FSharp.Compiler.Service (13.0)
       FSharp.Core (>= 4.1.17) - restriction: && (>= net451) (>= netstandard1.6)
@@ -137,6 +145,7 @@ NUGET
     System.Text.Encoding.Extensions (4.3) - restriction: && (>= net451) (>= netstandard1.6)
     System.Threading (4.3) - restriction: && (>= net451) (>= netstandard1.6)
     System.Threading.Tasks (4.3) - restriction: && (>= net451) (>= netstandard1.6)
+    System.ValueTuple (4.4) - restriction: || (&& (>= net451) (>= netstandard1.6) (< netstandard2.0)) (>= net461)
     System.Xml.XDocument (4.3) - restriction: && (>= net451) (>= netstandard1.6)
     System.Xml.XmlDocument (4.3) - restriction: || (&& (>= net451) (>= netstandard1.6)) (&& (>= net46) (>= netstandard1.6))
     System.Xml.XPath (4.3) - restriction: || (&& (>= net451) (>= netstandard1.6)) (&& (>= net46) (>= netstandard1.6))
@@ -146,19 +155,6 @@ NUGET
       System.Xml.XmlDocument (>= 4.3) - restriction: || (&& (>= net451) (>= netstandard1.3)) (>= net46)
       System.Xml.XPath (>= 4.3) - restriction: || (&& (>= net451) (>= netstandard1.3)) (>= net46)
     Trinet.Core.IO.Ntfs (4.0)
-    xunit (2.1)
-      xunit.assert (2.1)
-      xunit.core (2.1)
-    xunit.abstractions (2.0)
-    xunit.assert (2.1)
-    xunit.core (2.1)
-      xunit.extensibility.core (2.1)
-      xunit.extensibility.execution (2.1)
-    xunit.extensibility.core (2.1)
-      xunit.abstractions (2.0)
-    xunit.extensibility.execution (2.1)
-      xunit.extensibility.core (2.1)
-    xunit.runner.console (2.1)
 
 GROUP Docs
 RESTRICTION: >= net451

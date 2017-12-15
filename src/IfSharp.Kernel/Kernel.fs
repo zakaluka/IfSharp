@@ -533,6 +533,6 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
     /// Starts the kernel asynchronously
     member __.StartAsync() = 
         
-        //Async.Start (async { doHeartbeat() } )
+        Async.Start (async { doHeartbeat() } )
         Async.Start (async { doShell() } )
         Async.Start (async { doControl() } )

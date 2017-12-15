@@ -1,0 +1,12 @@
+﻿{
+  "shell_port": 14906,
+  "iopub_port": 14907,
+  "stdin_port": 14908,
+  "control_port": 14909,
+  "hb_port": 14910,
+  "ip": "127.0.0.1",
+  "key": "ca4d92d9-bd0990e00a433a623fea2ee2",
+  "transport": "tcp",
+  "signature_scheme": "hmac-sha256",
+  "kernel_name": "ifsharp"
+}
