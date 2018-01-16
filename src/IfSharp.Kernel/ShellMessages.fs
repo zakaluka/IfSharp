@@ -524,7 +524,7 @@ type Header =
 
 type KernelMessage = 
     {
-        Identifiers: list<byte[]>;
+        Identifiers: list<string>;
         HmacSignature: string;
         Header: Header;
         ParentHeader: Header;

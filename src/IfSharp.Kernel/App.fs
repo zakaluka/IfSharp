@@ -302,3 +302,8 @@ module App =
 
             // block forever
             Thread.Sleep(Timeout.Infinite)
+    
+    /// This is testing method, not used when hosted in Jupyter
+    let Stop () =
+        Kernel.Value.Stop()
+        Kernel <- None

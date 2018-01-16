@@ -36,13 +36,14 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
 
     // shell
     let shellSocket = new RouterSocket()
-    let shellSocketURL =String.Format("{0}://{1}:{2}", connectionInformation.transport, connectionInformation.ip, connectionInformation.shell_port)
+    let shellSocketURL = String.Format("{0}://{1}:{2}", connectionInformation.transport, connectionInformation.ip, connectionInformation.shell_port)
     do shellSocket.Bind(shellSocketURL)
 
     let payload = new List<Payload>()
     let nuGetManager = NuGetManager(FileInfo(".").FullName)
     let mutable executionCount = 0
     let mutable lastMessage : Option<KernelMessage> = None
+    let mutable running = true
 
     /// Gets the header code to prepend to all items
     let headerCode = 
@@ -92,55 +93,60 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
     let hmac = new HMACSHA256(Encoding.UTF8.GetBytes(connectionInformation.key))
     let sign (parts:string list) : string =
         if connectionInformation.key = "" then "" else
-          ignore (hmac.Initialize())
-          List.iter (fun (s:string) -> let bytes = Encoding.UTF8.GetBytes(s) in ignore(hmac.TransformBlock(bytes, 0, bytes.Length, null, 0))) parts
-          ignore (hmac.TransformFinalBlock(Array.zeroCreate 0, 0, 0))
-          BitConverter.ToString(hmac.Hash).Replace("-", "").ToLower()
-
-    let recvAll (socket: NetMQSocket) = socket.ReceiveMultipartBytes()
+            hmac.Initialize()
+            parts
+            |> List.iter (fun (s:string) ->
+                            let bytes = Encoding.UTF8.GetBytes(s)
+                            ignore(hmac.TransformBlock(bytes, 0, bytes.Length, null, 0)))
+            ignore (hmac.TransformFinalBlock(Array.zeroCreate 0, 0, 0))
+            BitConverter.ToString(hmac.Hash).Replace("-", "").ToLower()
     
     /// Constructs an 'envelope' from the specified socket
     let recvMessage (socket: NetMQSocket) = 
         
-        // receive all parts of the message
-        let message = (recvAll (socket)) |> Array.ofSeq
-        let asStrings = message |> Array.map decode
+        let strings = socket.ReceiveMultipartStrings()
 
         // find the delimiter between IDS and MSG
-        let idx = Array.IndexOf(asStrings, "<IDS|MSG>")
+        let idx = strings.IndexOf("<IDS|MSG>")
 
-        let idents = message.[0..idx - 1]
-        let messageList = asStrings.[idx + 1..message.Length - 1]
+        if strings.Count = 0 then
+            None
+        else
+            let asArray = strings.ToArray() //For simplicity may wish to perform less allocation
 
-        // detect a malformed message
-        if messageList.Length < 4 then failwith ("Malformed message")
+            let idents = asArray.[0..idx - 1]
+            let messageList = asArray.[idx + 1..strings.Count - 1]
 
-        // assemble the 'envelope'
-        let hmac             = messageList.[0]
-        let headerJson       = messageList.[1]
-        let parentHeaderJson = messageList.[2]
-        let metadata         = messageList.[3]
-        let contentJson      = messageList.[4]
+            // detect a malformed message
+            if messageList.Length < 4 then failwith ("Malformed message")
+
+            // assemble the 'envelope'
+            let hmac             = messageList.[0]
+            let headerJson       = messageList.[1]
+            let parentHeaderJson = messageList.[2]
+            let metadata         = messageList.[3]
+            let contentJson      = messageList.[4]
         
-        let header           = JsonConvert.DeserializeObject<Header>(headerJson)
-        let parentHeader     = JsonConvert.DeserializeObject<Header>(parentHeaderJson)
-        let metaDataDict     = deserializeDict (metadata)
-        let content          = ShellMessages.Deserialize (header.msg_type) (contentJson)
+            let calculated_signature = sign [headerJson; parentHeaderJson; metadata; contentJson]
+            if calculated_signature <> hmac then failwith("Wrong message signature")
 
-        let calculated_signature = sign [headerJson; parentHeaderJson; metadata; contentJson]
-        if calculated_signature <> hmac then failwith("Wrong message signature")
+            let header           = JsonConvert.DeserializeObject<Header>(headerJson)
+            let parentHeader     = JsonConvert.DeserializeObject<Header>(parentHeaderJson)
+            //let metaDataDict     = deserializeDict (metadata)
+            let content          = ShellMessages.Deserialize (header.msg_type) (contentJson)
 
-        lastMessage <- Some
-            {
-                Identifiers = idents |> Seq.toList;
-                HmacSignature = hmac;
-                Header = header;
-                ParentHeader = parentHeader;
-                Metadata = metadata;
-                Content = content;
-            }
+            lastMessage <- Some
+                {
+                    Identifiers = idents |> Seq.toList;
+                    HmacSignature = hmac;
+                    Header = header;
+                    ParentHeader = parentHeader;
+                    Metadata = metadata;
+                    Content = content;
+                }
 
-        lastMessage.Value
+            lastMessage
+
 
     /// Convenience method for creating a header
     let createHeader (messageType) (sourceEnvelope) =
@@ -200,7 +206,7 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
                 language_info =
                 {
                     name = "fsharp";
-                    version = "4.3.1.0";
+                    version = "4.4.1.0";
                     mimetype = "text/x-fsharp";
                     file_extension = ".fs";
                     pygments_lexer = "";
@@ -275,18 +281,18 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
         
         // Send error local function
         let sendError err =
-                let executeReply =
-                    {
-                        status = "error";
-                        execution_count = executionCount;
-                        ename = "generic";
-                        evalue = err;
-                        traceback = [||]
-                    }
+            let executeReply =
+                {
+                    status = "error";
+                    execution_count = executionCount;
+                    ename = "generic";
+                    evalue = err;
+                    traceback = [||]
+                }
 
-                sendMessage shellSocket msg "execute_reply" executeReply
-                sendMessage ioSocket msg "stream" { name = "stderr"; data = err; }
-                logMessage err
+            sendMessage shellSocket msg "execute_reply" executeReply
+            sendMessage ioSocket msg "stream" { name = "stderr"; data = err; }
+            logMessage err
 
         // clear some state from previous runs
         sbOut.Clear() |> ignore
@@ -449,10 +455,11 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
     let shutdownRequest (msg : KernelMessage) (content : ShutdownRequest) =
         logMessage "shutdown request"
         // TODO: actually shutdown        
-        let reply = { restart = true; }
+        let reply = { restart = true; } // We just assume termination and restart
 
         sendMessage shellSocket msg "shutdown_reply" reply;
-        System.Environment.Exit(0)
+        running <- false
+        System.Environment.Exit(0) // This abrupt exit works OK in practice but we may need to handle restarts as well
 
     /// Handles a 'history_request' message
     let historyRequest (msg : KernelMessage) (content : HistoryRequest) =
@@ -479,41 +486,48 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
         logMessage (sbErr.ToString())
         logMessage (sbOut.ToString())
 
-        while true do
-            let msg = recvMessage (shellSocket)
+        while running do
+            let possibleMsg = recvMessage (shellSocket)
 
-            try
-                match msg.Content with
-                | KernelRequest(r)       -> kernelInfoRequest msg r
-                | ExecuteRequest(r)      -> executeRequest msg r
-                | CompleteRequest(r)     -> completeRequest msg r
-                | IntellisenseRequest(r) -> intellisenseRequest msg r
-                | ConnectRequest(r)      -> connectRequest msg r
-                | ShutdownRequest(r)     -> shutdownRequest msg r
-                | HistoryRequest(r)      -> historyRequest msg r
-                | ObjectInfoRequest(r)   -> objectInfoRequest msg r
-                | InspectRequest(r)      -> inspectRequest msg r
-                | _                      -> logMessage (String.Format("Unknown content type on shell. msg_type is `{0}`", msg.Header.msg_type))
-            with 
-            | ex -> handleException ex
+            match possibleMsg with
+            | Some msg ->
+                try
+                
+                    match msg.Content with
+                    | KernelRequest(r)       -> kernelInfoRequest msg r
+                    | ExecuteRequest(r)      -> executeRequest msg r
+                    | CompleteRequest(r)     -> completeRequest msg r
+                    | IntellisenseRequest(r) -> intellisenseRequest msg r
+                    | ConnectRequest(r)      -> connectRequest msg r
+                    | ShutdownRequest(r)     -> shutdownRequest msg r
+                    | HistoryRequest(r)      -> historyRequest msg r
+                    | ObjectInfoRequest(r)   -> objectInfoRequest msg r
+                    | InspectRequest(r)      -> inspectRequest msg r
+                    | _                      -> logMessage (String.Format("Unknown content type on shell. msg_type is `{0}`", msg.Header.msg_type))
+                with 
+                | ex -> handleException ex
+            | None -> ()
    
     let doControl() =
-        while true do
-            let msg = recvMessage (controlSocket)
-            try
-                match msg.Content with
-                | ShutdownRequest(r)     -> shutdownRequest msg r
-                | _                      -> logMessage (String.Format("Unexpected content type on control. msg_type is `{0}`", msg.Header.msg_type))
-            with 
-            | ex -> handleException ex
+        while running do
+            let possibleMsg = recvMessage (controlSocket)
+            match possibleMsg with
+            | Some msg ->
+                try
+                    match msg.Content with
+                    | ShutdownRequest(r)     -> shutdownRequest msg r
+                    | _                      -> logMessage (String.Format("Unexpected content type on control. msg_type is `{0}`", msg.Header.msg_type))
+                with 
+                | ex -> handleException ex
+            | None -> ()
 
     /// Loops repeating message from the client
     let doHeartbeat() =
 
         try
-            while true do
-                let hb = hbSocket.ReceiveMultipartBytes() in
-                hbSocket.SendMultipartBytes hb
+            while running do
+                let message = hbSocket.ReceiveMultipartMessage()
+                hbSocket.SendMultipartMessage message
         with
         | ex -> handleException ex
 
@@ -536,3 +550,19 @@ type IfSharpKernel(connectionInformation : ConnectionInformation) =
         Async.Start (async { doHeartbeat() } )
         Async.Start (async { doShell() } )
         Async.Start (async { doControl() } )
+    
+    /// This is testing method, not used when hosted in Jupyter. 
+    member __.Stop() =
+        // Each control thread must then process an additional message to actually stop
+        // Current a shutdown does a process exit which we can't use in tests
+        running <- false
+
+        //Send empty messages to clear the threads?
+
+        //More gentle closing of sockets?
+
+        hbSocket.Dispose()
+        controlSocket.Dispose()
+        stdinSocket.Dispose()
+        ioSocket.Dispose()
+        shellSocket.Dispose()
