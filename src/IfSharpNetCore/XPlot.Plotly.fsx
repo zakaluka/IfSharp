@@ -1,6 +1,7 @@
 #r "IfSharp.Kernel.dll"
 
-#load @".paket/load/main.group.fsx"
+//Make sure to keep consistent with project version
+#load @".paket/load/netcoreapp2.2/main.group.fsx"
 
 open XPlot.Plotly
 open IfSharp.Kernel
